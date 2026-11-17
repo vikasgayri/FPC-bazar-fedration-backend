@@ -1,0 +1,52 @@
+# All secrets/hosts come from environment variables. See .env.example.
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: native   # real client IP behind nginx on Infinitive Cloud
+  error:
+    include-message: never
+    include-stacktrace: never
+
+spring:
+  application:
+    name: fpc-bazaar-api
+  mongodb:
+    uri: ${MONGODB_URI:mongodb://localhost:27017/fpcbazaar}
+  data:
+    mongodb:
+      auto-index-creation: true
+  servlet:
+    multipart:
+      max-file-size: ${MAX_FILE_SIZE:5MB}
+      max-request-size: 25MB
+  jackson:
+    default-property-inclusion: non_null
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:}
+    ttl: ${JWT_TTL:12h}
+    issuer: fpc-bazaar-api
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
+  storage:
+    dir: ${STORAGE_DIR:./data/uploads}
+    max-file-mb: 5
+  admin:
+    username: ${ADMIN_USERNAME:}
+    password: ${ADMIN_PASSWORD:}
+    name: ${ADMIN_NAME:Federation Admin}
+  public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+  seed-demo: ${SEED_DEMO:false}
+  rate-limit:
+    forms-per-minute: 10
+    login-failures-per-window: 5
+    login-window: 15m
