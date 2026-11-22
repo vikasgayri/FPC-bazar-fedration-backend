@@ -99,4 +99,44 @@ class AuthIntegrationTest {
         .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
             .string("Access-Control-Allow-Origin", "http://localhost:5173"));
   }
+
+  @Test
+  void manyWrongPasswordsSentAtOnceCannotPassTheLimit() throws Exception {
+    int threads = 8;
+    java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+    java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+    java.util.List<java.util.concurrent.Future<Integer>> calls = new java.util.ArrayList<>();
+    for (int i = 0; i < threads; i++)
+      calls.add(pool.submit(() -> {
+        go.await();
+        return mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+            .content("{\"username\":\"vendor\",\"password\":\"wrong-guess\"}")).andReturn().getResponse().getStatus();
+      }));
+    go.countDown();
+    int checked = 0;
+    int limited = 0;
+    for (var f : calls) {
+      int st = f.get();
+      if (st == 401) checked++;
+      else if (st == 429) limited++;
+    }
+    pool.shutdown();
+    org.assertj.core.api.Assertions.assertThat(checked).isEqualTo(3); // limit in this test = 3
+    org.assertj.core.api.Assertions.assertThat(limited).isEqualTo(threads - 3);
+  }
+
+  @Test
+  void tooLongPasswordsGiveAClearErrorNot500() throws Exception {
+    String longAscii = "a1".repeat(50); // 100 bytes
+    String hindi = "किसान".repeat(5) + "12345"; // 25 Hindi chars = 75 bytes + 5
+    mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+            .content("{\"username\":\"admin\",\"password\":\"" + longAscii + "\"}"))
+        .andExpect(status().isUnauthorized());
+    String t = login("admin", "admin123");
+    for (String next : new String[] {longAscii, hindi})
+      mvc.perform(post("/api/auth/change-password").header("Authorization", "Bearer " + t).contentType(MediaType.APPLICATION_JSON)
+              .content("{\"currentPassword\":\"admin123\",\"newPassword\":\"" + next + "\"}"))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.errors.newPassword").exists());
+  }
 }

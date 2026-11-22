@@ -1,0 +1,19 @@
+# Substitute the actual API domain and configure TLS before enabling this server.
+# Backend binds to 127.0.0.1:8080. Do not expose port 8080 through the firewall.
+# $uri omits query strings so legacy ?token= file/export links do not enter access logs.
+log_format fpc_safe '$remote_addr [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent';
+server {
+    listen 80;
+    server_name api.YOUR-DOMAIN;
+    access_log /var/log/nginx/fpc-bazaar.access.log fpc_safe;
+    client_max_body_size 25m;
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+}

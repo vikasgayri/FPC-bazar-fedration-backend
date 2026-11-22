@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily FPC Bazaar backup (short maintenance window)
+[Timer]
+OnCalendar=*-*-* 02:30:00 Asia/Kolkata
+Persistent=true
+Unit=fpc-backup.service
+[Install]
+WantedBy=timers.target

@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Component;
  * and (only when SEED_DEMO=true, for local testing) the demo logins the frontend README mentions.
  */
 @Component
+@Order(1)
 public class UserBootstrap implements ApplicationRunner {
   private static final Logger log = LoggerFactory.getLogger(UserBootstrap.class);
   private final UserRepository users;
@@ -34,9 +36,11 @@ public class UserBootstrap implements ApplicationRunner {
         log.warn("No admin user exists. Set ADMIN_USERNAME and ADMIN_PASSWORD and restart to create one.");
       } else if (a.password().length() < 10) {
         log.warn("ADMIN_PASSWORD must be at least 10 characters; admin user not created.");
+      } else if (a.password().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72) {
+        log.warn("ADMIN_PASSWORD is longer than 72 bytes; admin user not created. Use a shorter password.");
       } else {
         users.save(new User(a.username(), encoder.encode(a.password()), Role.ADMIN, a.name(), null, null));
-        log.info("Created admin user '{}'.", a.username().trim().toLowerCase());
+        log.info("Created admin user '{}'.", a.username().trim().toLowerCase(java.util.Locale.ROOT));
       }
     }
     if (props.seedDemo()) seedDemo();

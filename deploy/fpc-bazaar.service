@@ -1,0 +1,24 @@
+[Unit]
+Description=FPC Bazaar backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fpcbazaar
+Group=fpcbazaar
+WorkingDirectory=/opt/fpc-bazaar
+EnvironmentFile=/etc/fpc-bazaar/backend.env
+ExecStart=/usr/bin/java -Xms256m -Xmx2g -jar /opt/fpc-bazaar/backend.jar
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/fpc-bazaar
+
+[Install]
+WantedBy=multi-user.target

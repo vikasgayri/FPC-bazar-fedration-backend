@@ -52,6 +52,11 @@ public class ApiExceptionHandler {
     return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(ApiError.of("Method not allowed.", null));
   }
 
+  @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+  ResponseEntity<ApiError> invalidParameter(Exception e) {
+    return ResponseEntity.badRequest().body(ApiError.of("Invalid request parameter.", null));
+  }
+
   @ExceptionHandler(NoResourceFoundException.class)
   ResponseEntity<ApiError> notFound(NoResourceFoundException e) {
     return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiError.of("Not found.", null));

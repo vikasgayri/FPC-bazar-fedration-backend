@@ -15,6 +15,8 @@ import org.fpcbazaar.api.config.AppProperties;
 import org.fpcbazaar.api.security.Auth;
 import org.fpcbazaar.api.security.CurrentUser;
 import org.fpcbazaar.api.security.JwtService;
+import org.fpcbazaar.api.security.Passwords;
+import org.fpcbazaar.api.audit.AuditService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,9 +38,16 @@ public class AuthController {
   private final SlidingWindowLimiter userFailures;
   /** Per IP: 4x higher, because a whole office (many staff) can share one IP. */
   private final SlidingWindowLimiter ipFailures;
+  private final AuditService audit;
+  private final Clock clock;
+  private final UserWrites writes;
 
-  public AuthController(UserRepository users, PasswordEncoder encoder, JwtService jwt, AppProperties props, Clock clock) {
+  public AuthController(UserRepository users, PasswordEncoder encoder, JwtService jwt, AppProperties props, Clock clock,
+      AuditService audit, UserWrites writes) {
     this.users = users;
+    this.writes = writes;
+    this.audit = audit;
+    this.clock = clock;
     this.encoder = encoder;
     this.jwt = jwt;
     this.dummyHash = encoder.encode(java.util.UUID.randomUUID().toString());
@@ -47,34 +56,69 @@ public class AuthController {
     this.ipFailures = new SlidingWindowLimiter(max * 4, props.rateLimit().loginWindow(), clock);
   }
 
-  public record LoginRequest(@NotBlank @Size(max = 64) String username, @NotBlank @Size(max = 128) String password) {}
+  public record LoginRequest(@NotBlank @Size(max = 120) String username, @NotBlank @Size(max = 128) String password) {}
 
   @PostMapping("/login")
   public Map<String, Object> login(@Valid @RequestBody LoginRequest body, HttpServletRequest req) {
-    String username = body.username().trim().toLowerCase();
+    String username = body.username().trim().toLowerCase(java.util.Locale.ROOT);
     String ipKey = "ip:" + ClientIp.of(req);
     String userKey = "user:" + username;
-    if (ipFailures.isBlocked(ipKey) || userFailures.isBlocked(userKey))
-      throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "Too many wrong attempts. Please try again after 15 minutes.");
+    // Reserve an attempt BEFORE checking the password, so many requests sent at the same moment
+    // cannot all slip past the limit. A successful sign-in gives the attempt back.
+    reserve(userKey, ipKey);
 
     User u = users.findByUsername(username).orElse(null);
     boolean ok = encoder.matches(body.password(), u == null ? dummyHash : u.getPasswordHash()) && u != null && u.isActive();
-    if (!ok) {
-      ipFailures.tryAcquire(ipKey);
-      userFailures.tryAcquire(userKey);
-      throw new ApiException(HttpStatus.UNAUTHORIZED, "Wrong username or password.");
-    }
+    if (!ok) throw new ApiException(HttpStatus.UNAUTHORIZED, "Wrong username or password.");
     userFailures.reset(userKey);
-    u.setLastLoginAt(Instant.now());
-    users.save(u);
+    ipFailures.release(ipKey);
+    writes.touchLogin(u.getId(), Instant.now(clock)); // only lastLoginAt; never overwrites a switch-off made meanwhile
+    audit.log(u.getId(), u.getName(), u.getRole().code(), "login", "user", u.getId(), u.getUsername());
+    return session(u);
+  }
 
+  private void reserve(String userKey, String ipKey) {
+    if (!userFailures.tryAcquire(userKey)) throw tooMany();
+    if (!ipFailures.tryAcquire(ipKey)) {
+      userFailures.release(userKey);
+      throw tooMany();
+    }
+  }
+
+  private static ApiException tooMany() {
+    return new ApiException(HttpStatus.TOO_MANY_REQUESTS, "Too many wrong attempts. Please try again after 15 minutes.");
+  }
+
+  private Map<String, Object> session(User u) {
     Map<String, Object> out = new LinkedHashMap<>();
     out.put("token", jwt.issue(u));
     out.put("role", u.getRole().code());
     out.put("name", u.getName());
     if (u.getState() != null) out.put("state", u.getState());
     if (u.getRecordId() != null) out.put("recordId", u.getRecordId());
+    out.put("mustChangePassword", u.isMustChangePassword());
     return out;
+  }
+
+  public record ChangePasswordRequest(@NotBlank @Size(max = 128) String currentPassword, @NotBlank @Size(max = 200) String newPassword) {}
+
+  /** Changes the signed-in user's password. Old tokens stop working; a fresh token is returned. */
+  @PostMapping("/change-password")
+  public Map<String, Object> changePassword(@Valid @RequestBody ChangePasswordRequest body) {
+    CurrentUser cu = Auth.current();
+    User u = users.findById(cu.id()).orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Please sign in again."));
+    String userKey = "user:" + u.getUsername();
+    if (!userFailures.tryAcquire(userKey)) throw tooMany();
+    if (!encoder.matches(body.currentPassword(), u.getPasswordHash()))
+      throw new ApiException(HttpStatus.BAD_REQUEST, "Current password is wrong.", Map.of("currentPassword", "Current password is wrong."));
+    userFailures.reset(userKey);
+    String problem = Passwords.problem(body.newPassword(), u.getUsername());
+    if (problem == null && encoder.matches(body.newPassword(), u.getPasswordHash())) problem = "Choose a new password.";
+    if (problem != null) throw new ApiException(HttpStatus.BAD_REQUEST, problem, Map.of("newPassword", problem));
+    User saved = writes.changeOwnPassword(u.getId(), u.getTokenVersion(), encoder.encode(body.newPassword()));
+    if (saved == null) throw new ApiException(HttpStatus.UNAUTHORIZED, "Please sign in again.");
+    audit.log(cu, "password_changed", "user", saved.getId(), saved.getUsername());
+    return session(saved);
   }
 
   @GetMapping("/me")
@@ -86,6 +130,7 @@ public class AuthController {
     out.put("name", cu.name());
     if (cu.state() != null) out.put("state", cu.state());
     if (cu.recordId() != null) out.put("recordId", cu.recordId());
+    out.put("mustChangePassword", users.findById(cu.id()).map(User::isMustChangePassword).orElse(false));
     return out;
   }
 }

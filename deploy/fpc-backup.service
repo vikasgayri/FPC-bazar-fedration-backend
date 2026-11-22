@@ -1,0 +1,13 @@
+[Unit]
+Description=FPC Bazaar consistent local and optional encrypted offsite backup
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/fpc-bazaar/backend.env
+WorkingDirectory=/opt/fpc-bazaar
+ExecStartPre=/usr/bin/systemctl stop fpc-bazaar.service
+ExecStart=/usr/bin/python3 /opt/fpc-bazaar/scripts/backup.py --maintenance-confirmed
+ExecStopPost=/usr/bin/systemctl start fpc-bazaar.service
+UMask=0077
+# The API is stopped during the backup. If the backup hangs, stop it after 30 minutes;
+# ExecStopPost then starts the API again, so the website is never down for longer than this.
+TimeoutStartSec=30min

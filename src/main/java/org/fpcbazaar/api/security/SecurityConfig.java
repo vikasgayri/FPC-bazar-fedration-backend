@@ -20,6 +20,8 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
+import org.fpcbazaar.api.users.UserRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -28,11 +30,11 @@ import org.springframework.core.convert.converter.Converter;
 
 @Configuration
 public class SecurityConfig {
-  /** Document links are opened in a new browser tab, so only they may carry the token as ?token=. */
-  private static final Pattern FILE_URL = Pattern.compile("^/api/admin/registrations/[^/]+/files/[^/]+$");
+  /** Document links and Excel downloads open in a new browser tab, so only they may carry the token as ?token=. */
+  private static final Pattern FILE_URL = Pattern.compile("^/api/admin/(registrations/[^/]+/files/[^/]+|export/[a-z]+)$");
 
   @Bean
-  SecurityFilterChain api(HttpSecurity http, JwtService jwt) throws Exception {
+  SecurityFilterChain api(HttpSecurity http, JwtService jwt, UserRepository users) throws Exception {
     http
         .csrf((c) -> c.disable()) // stateless bearer tokens, no cookies
         .cors((c) -> {})
@@ -40,11 +42,12 @@ public class SecurityConfig {
         .headers((h) -> h.contentTypeOptions((o) -> {}).frameOptions((f) -> f.deny()))
         .authorizeHttpRequests((a) -> a
             .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-            .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+            .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/forms/*").permitAll()
+            .requestMatchers(HttpMethod.GET, "/reset-password", "/reset-password.js", "/reset-password.css").permitAll()
             .requestMatchers(HttpMethod.GET, "/api/public/**").permitAll()
             .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
-            .requestMatchers("/api/auth/me", "/api/admin/**").authenticated()
+            .requestMatchers("/api/auth/me", "/api/auth/change-password", "/api/admin/**").authenticated()
             .anyRequest().denyAll())
         .oauth2ResourceServer((o) -> o
             .bearerTokenResolver(tokenResolver())
@@ -54,6 +57,7 @@ public class SecurityConfig {
         .exceptionHandling((e) -> e
             .authenticationEntryPoint((req, res, ex) -> write(res, HttpStatus.UNAUTHORIZED, "Please sign in again."))
             .accessDeniedHandler((req, res, ex) -> write(res, HttpStatus.FORBIDDEN, "You are not allowed to do this.")));
+    http.addFilterAfter(new AccountCheckFilter(users), BearerTokenAuthenticationFilter.class);
     return http.build();
   }
 

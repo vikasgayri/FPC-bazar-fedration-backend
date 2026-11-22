@@ -1,0 +1,20 @@
+# Replace domain and root, issue a TLS certificate, and enable HTTPS before launch.
+# Build frontend with VITE_API_URL=https://api.YOUR-DOMAIN, not localhost.
+server {
+    listen 80;
+    server_name www.YOUR-DOMAIN;
+    root /var/www/fpc-bazaar/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
+    }
+    location /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+    location ~ /\. {
+        deny all;
+    }
+}

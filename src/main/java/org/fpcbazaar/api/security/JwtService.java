@@ -48,7 +48,8 @@ public class JwtService {
         .subject(u.getId())
         .claim("username", u.getUsername())
         .claim("name", u.getName())
-        .claim("role", u.getRole().code());
+        .claim("role", u.getRole().code())
+        .claim("tv", u.getTokenVersion());
     if (u.getState() != null) claims.claim("state", u.getState());
     if (u.getRecordId() != null) claims.claim("recordId", u.getRecordId());
     JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
