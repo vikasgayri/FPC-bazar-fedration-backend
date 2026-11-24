@@ -87,10 +87,10 @@ class AdminStep3IntegrationTest {
             .content("{\"username\":\"" + username + "\",\"name\":\"X\",\"role\":\"state_head\",\"state\":\"goa\"}"))
         .andExpect(status().isConflict());
     mvc.perform(post("/api/admin/users").header("Authorization", auth(admin)).contentType(MediaType.APPLICATION_JSON)
-            .content("{\"username\":\"x" + rnd() + "\",\"name\":\"X\",\"role\":\"project_head\"}"))
+            .content("{\"username\":\"x" + rnd() + "@example.org\",\"name\":\"X\",\"role\":\"project_head\"}"))
         .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors.state").exists());
     mvc.perform(post("/api/admin/users").header("Authorization", auth(admin)).contentType(MediaType.APPLICATION_JSON)
-            .content("{\"username\":\"x" + rnd() + "\",\"name\":\"X\",\"role\":\"king\"}"))
+            .content("{\"username\":\"x" + rnd() + "@example.org\",\"name\":\"X\",\"role\":\"king\"}"))
         .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors.role").exists());
 
     // first sign-in: must change password before anything else
@@ -112,13 +112,13 @@ class AdminStep3IntegrationTest {
 
     // State Head manages Project Heads of their own state only
     mvc.perform(post("/api/admin/users").header("Authorization", auth(head)).contentType(MediaType.APPLICATION_JSON)
-            .content("{\"username\":\"ph" + rnd() + "\",\"name\":\"PH Gujarat\",\"role\":\"project_head\",\"state\":\"gujarat\"}"))
+            .content("{\"username\":\"ph" + rnd() + "@example.org\",\"name\":\"PH Gujarat\",\"role\":\"project_head\",\"state\":\"gujarat\"}"))
         .andExpect(status().isCreated());
     mvc.perform(post("/api/admin/users").header("Authorization", auth(head)).contentType(MediaType.APPLICATION_JSON)
-            .content("{\"username\":\"ph" + rnd() + "\",\"name\":\"PH Raj\",\"role\":\"project_head\",\"state\":\"rajasthan\"}"))
+            .content("{\"username\":\"ph" + rnd() + "@example.org\",\"name\":\"PH Raj\",\"role\":\"project_head\",\"state\":\"rajasthan\"}"))
         .andExpect(status().isForbidden());
     mvc.perform(post("/api/admin/users").header("Authorization", auth(head)).contentType(MediaType.APPLICATION_JSON)
-            .content("{\"username\":\"sh" + rnd() + "\",\"name\":\"Another head\",\"role\":\"state_head\",\"state\":\"gujarat\"}"))
+            .content("{\"username\":\"sh" + rnd() + "@example.org\",\"name\":\"Another head\",\"role\":\"state_head\",\"state\":\"gujarat\"}"))
         .andExpect(status().isForbidden());
     mvc.perform(get("/api/admin/users").header("Authorization", auth(head)))
         .andExpect(status().isOk())
@@ -312,7 +312,7 @@ class AdminStep3IntegrationTest {
   @Test
   void signInAtTheSameMomentCannotUndoASwitchOff() throws Exception {
     String admin = login("chairman", "very-strong-pass");
-    String username = "race" + rnd();
+    String username = "race" + rnd() + "@example.org";
     String created = json(mvc.perform(post("/api/admin/users").header("Authorization", auth(admin))
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"username\":\"" + username + "\",\"name\":\"Race PH\",\"role\":\"project_head\",\"state\":\"goa\"}")));

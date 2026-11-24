@@ -46,7 +46,8 @@ public class AccountService {
       if (!existing.isActive())
         return new AccountNotice(false, existing.getUsername(), null,
             "Login " + existing.getUsername() + " is switched off. Only an admin can switch it on (Users).");
-      return new AccountNotice(false, existing.getUsername(), null, "Login already exists: " + existing.getUsername());
+      return new AccountNotice(false, existing.getUsername(), null, "Login already exists: " + existing.getUsername()
+          + (existing.isEmailUnconfirmed() ? " (the applicant has not confirmed the email yet)" : ""));
     }
     String email = r.getData().get("email");
     email = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);

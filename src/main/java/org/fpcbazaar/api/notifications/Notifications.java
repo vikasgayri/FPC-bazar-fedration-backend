@@ -118,6 +118,42 @@ public class Notifications {
     if (!isEmail(to)) return;
     queue.enqueue(kind, new MailPayload(to.toLowerCase(Locale.ROOT), subject, text), expires);
   }
+  /** Link that opens a self-registered login (Hindi when the form was filled in Hindi). */
+  public void confirmEmail(User user, String token, String lang, Instant expiresAt) {
+    boolean hi = "hi".equals(lang);
+    String link = resetBaseUrl + "/confirm-email#token=" + token;
+    String text = greeting(user.getName()) + (hi
+        ? "आपका लॉगिन बन गया है। इसे चालू करने के लिए यह लिंक खोलें:\n" + link
+            + "\nयह लिंक 48 घंटे तक एक बार काम करेगा। उसके बाद इस ईमेल और अपने पासवर्ड से साइन इन करें: " + loginUrl()
+            + "\nआपका आवेदन फेडरेशन की जाँच तक Pending रहेगा। अगर यह आपने नहीं किया है, तो इस ईमेल को अनदेखा करें।"
+        : "Your login has been created. To switch it on, open this link:\n" + link
+            + "\nThe link works once within 48 hours. Then sign in with this email and your password: " + loginUrl()
+            + "\nYour application stays Pending until the Federation verifies it. If you did not do this, ignore this email.");
+    queue.enqueue("email_confirmation", new MailPayload(user.getUsername(),
+        hi ? "FPC Bazaar — अपना ईमेल पक्का करें" : "FPC Bazaar — Confirm your email", text), expiresAt);
+  }
+
+  /**
+   * Sign-in code (second step of every sign-in). Returns false when it could not be queued.
+   * The queue is asked to send at once: the user is waiting on the code screen.
+   */
+  public boolean loginCode(User user, String code, Instant expiresAt, java.time.Duration ttl) {
+    long minutes = Math.max(1, ttl.toMinutes());
+    String text = greeting(user.getName()) + "Your FPC Bazaar sign-in code is:\n\n    " + code
+        + "\n\nIt works once, within " + minutes + " minutes. Never share this code with anyone; the federation will never ask for it."
+        + "\nIf you did not try to sign in, someone may know your password: change it at " + loginUrl()
+        + "\n\nआपका साइन-इन कोड: " + code + " (" + minutes + " मिनट तक मान्य)। यह कोड किसी को न बताएं।";
+    boolean queued;
+    try {
+      queued = queue.enqueue("login_code", new MailPayload(user.getUsername(), "FPC Bazaar — Your sign-in code", text), expiresAt);
+    } catch (RuntimeException e) {
+      log.error("Sign-in code could not be queued");
+      return false;
+    }
+    if (queued) queue.kick();
+    return queued;
+  }
+
   /** Admin panel sign-in page of the website (FRONTEND_URL + /admin). */
   String loginUrl() { return props.frontendUrl().replaceAll("/+$", "") + "/admin"; }
 

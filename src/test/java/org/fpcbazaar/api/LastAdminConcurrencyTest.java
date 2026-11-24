@@ -36,7 +36,8 @@ class LastAdminConcurrencyTest {
       Thread.sleep(100); String id=inv.getArgument(0); active.remove(id); return users.get(id);
     });
     var service=new UserAdminService(repo,mock(RegistrationRepository.class),mock(MongoTemplate.class),
-        mock(PasswordEncoder.class),mock(AuditService.class),writes,mock(Notifications.class));
+        mock(PasswordEncoder.class),mock(AuditService.class),writes,mock(Notifications.class),
+        mock(org.fpcbazaar.api.files.FileStorage.class),mock(org.fpcbazaar.api.users.LoginOtpService.class));
     var gate=new java.util.concurrent.CountDownLatch(1);
     try(var pool=java.util.concurrent.Executors.newFixedThreadPool(2)) {
       var one=pool.submit(() -> { gate.await(); return disable(service,"a","b"); });

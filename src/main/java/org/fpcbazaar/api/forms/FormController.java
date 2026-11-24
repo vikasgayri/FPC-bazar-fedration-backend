@@ -15,6 +15,7 @@ import org.fpcbazaar.api.enquiries.Enquiry;
 import org.fpcbazaar.api.enquiries.EnquiryRepository;
 import org.fpcbazaar.api.registrations.Registration;
 import org.fpcbazaar.api.registrations.RegistrationService;
+import org.fpcbazaar.api.users.SelfRegistration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +33,7 @@ import org.springframework.web.multipart.MultipartHttpServletRequest;
 @RestController
 public class FormController {
   private final org.fpcbazaar.api.notifications.Notifications notifications;
+  private final SelfRegistration selfRegistration;
   private final FormValidator validator;
   private final RegistrationService registrations;
   private final EnquiryRepository enquiries;
@@ -39,7 +41,9 @@ public class FormController {
   private final Clock clock;
 
   public FormController(FormValidator validator, RegistrationService registrations, EnquiryRepository enquiries,
-      AppProperties props, Clock clock, org.fpcbazaar.api.notifications.Notifications notifications) {
+      AppProperties props, Clock clock, org.fpcbazaar.api.notifications.Notifications notifications,
+      SelfRegistration selfRegistration) {
+    this.selfRegistration = selfRegistration;
     this.notifications = notifications;
     this.validator = validator;
     this.registrations = registrations;
@@ -90,16 +94,22 @@ public class FormController {
     if (!"true".equalsIgnoreCase(String.valueOf(text.get("consent")).trim()))
       throw new ApiException(HttpStatus.BAD_REQUEST, "Please accept the consent checkbox.", Map.of("consent", "Consent is required."));
 
+    // Optional login for FPO / vendor forms: the password is taken out here and never stored with the form.
+    String password = text.remove("password");
+    String passwordConfirm = text.remove("passwordConfirm");
     FormValidator.Result form = validator.validate(schema, text, files);
     String lang = "hi".equals(text.get("lang")) ? "hi" : "en";
     String page = text.get("page");
 
     if (FormSchemas.isRegistration(formKey)) {
+      SelfRegistration.Outcome login = selfRegistration.precheck(formKey, password, passwordConfirm, form.values().get("email"));
       Registration r = registrations.create(formKey, form, lang, page);
+      if (login == SelfRegistration.Outcome.CONFIRM_EMAIL) login = selfRegistration.create(r, password);
       Map<String, Object> out = new LinkedHashMap<>();
       out.put("ok", true);
       out.put("id", r.getId());
       out.put("status", r.getStatus());
+      if (login != SelfRegistration.Outcome.NOT_REQUESTED) out.put("login", login == SelfRegistration.Outcome.CONFIRM_EMAIL ? "confirm_email" : "after_verification");
       return ResponseEntity.status(HttpStatus.CREATED).body(out);
     }
     Enquiry e = new Enquiry();

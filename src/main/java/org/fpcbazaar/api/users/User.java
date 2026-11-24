@@ -27,6 +27,8 @@ public class User {
    */
   private int tokenVersion;
   private String createdBy;
+  /** Self-registered vendor / FPO logins start true and cannot sign in until the email link is opened. */
+  private boolean emailUnconfirmed;
   private Instant createdAt = Instant.now();
   private Instant lastLoginAt;
 
@@ -56,6 +58,8 @@ public class User {
   public void setMustChangePassword(boolean mustChangePassword) { this.mustChangePassword = mustChangePassword; }
   public int getTokenVersion() { return tokenVersion; }
   public String getCreatedBy() { return createdBy; }
+  public boolean isEmailUnconfirmed() { return emailUnconfirmed; }
+  public void setEmailUnconfirmed(boolean emailUnconfirmed) { this.emailUnconfirmed = emailUnconfirmed; }
   public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
   public Instant getCreatedAt() { return createdAt; }
   public Instant getLastLoginAt() { return lastLoginAt; }

@@ -49,6 +49,7 @@ class RegistrationIntegrationTest {
   @Autowired MockMvc mvc;
   @Autowired RegistrationRepository registrations;
   @Autowired EnquiryRepository enquiries;
+  @Autowired org.fpcbazaar.api.users.UserRepository users;
 
   private String login(String u, String p) throws Exception {
     String body = mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
@@ -267,5 +268,17 @@ class RegistrationIntegrationTest {
         .andExpect(jsonPath("$.items[*].name", hasItem("Hadoti Kisan Producer Company")))
         .andExpect(jsonPath("$.items[*].name", not(hasItem("Saurashtra Kisan FPO"))))
         .andExpect(jsonPath("$.items[*].cin").doesNotExist());
+  }
+
+  @Test
+  void withoutEmailServiceAChosenPasswordIsIgnoredAndTheLoginComesAfterVerification() throws Exception {
+    String gst = "08CCCCC" + digits(4) + "A1Z5";
+    MockMultipartHttpServletRequestBuilder form = vendorForm("No Mail Vendor " + digits(4), gst);
+    form.param("password", "VendorPass2026");
+    String body = mvc.perform(form).andExpect(status().isCreated()).andExpect(jsonPath("$.login").value("after_verification"))
+        .andReturn().getResponse().getContentAsString();
+    String id = JsonPath.read(body, "$.id");
+    assertThat(registrations.findById(id).orElseThrow().getData()).doesNotContainKey("password");
+    assertThat(users.findFirstByRecordId(id)).isEmpty();
   }
 }

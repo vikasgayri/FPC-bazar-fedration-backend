@@ -29,6 +29,26 @@ public class MailQueue {
   }
   public boolean enabled() { return props.enabled(); }
 
+  /** One background thread for "send now" requests (sign-in codes); the scheduled drain still covers everything. */
+  private final java.util.concurrent.ExecutorService kicker = java.util.concurrent.Executors.newSingleThreadExecutor((r) -> {
+    Thread t = new Thread(r, "mail-kick");
+    t.setDaemon(true);
+    return t;
+  });
+  private final java.util.concurrent.atomic.AtomicBoolean kickQueued = new java.util.concurrent.atomic.AtomicBoolean();
+
+  /** Sends due mail now instead of waiting for the next scheduled run. Safe next to the scheduler: jobs are claimed atomically. */
+  public void kick() {
+    if (!enabled() || !kickQueued.compareAndSet(false, true)) return;
+    kicker.execute(() -> {
+      kickQueued.set(false);
+      try { drain(); } catch (RuntimeException e) { log.warn("Immediate mail send failed; the scheduled run will retry"); }
+    });
+  }
+
+  @jakarta.annotation.PreDestroy
+  void stopKicker() { kicker.shutdownNow(); }
+
   public boolean enqueue(String kind, MailPayload payload, Instant expiresAt) {
     if (!enabled() || !Notifications.isEmail(payload.to())) return false;
     MailJob job = new MailJob();

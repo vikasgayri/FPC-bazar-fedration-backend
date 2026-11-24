@@ -26,8 +26,13 @@ public record AppProperties(
   /** Uploaded documents are stored on the server disk under this folder (never inside the web root). */
   public record Storage(@DefaultValue("./data/uploads") String dir, @DefaultValue("5") int maxFileMb) {}
 
-  /** First admin account, created on startup only if no admin exists yet. */
-  public record Admin(String username, String password, @DefaultValue("Federation Admin") String name) {}
+  /**
+   * First admin account, created on startup only if no admin exists yet.
+   * {@code recover=true} (ADMIN_RECOVER, one start only): makes this login an active admin with this password even when
+   * other admins exist, for when nobody can sign in any more (e.g. the admin's email is lost). Set it back to false after.
+   */
+  public record Admin(String username, String password, @DefaultValue("Federation Admin") String name,
+      @DefaultValue("false") boolean recover) {}
 
   public record RateLimit(@DefaultValue("10") int formsPerMinute, @DefaultValue("5") int loginFailuresPerWindow,
       @DefaultValue("15m") Duration loginWindow) {}

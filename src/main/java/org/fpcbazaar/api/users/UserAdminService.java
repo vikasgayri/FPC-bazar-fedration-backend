@@ -39,10 +39,15 @@ public class UserAdminService {
   private final PasswordEncoder encoder;
   private final AuditService audit;
   private final UserWrites writes;
+  private final org.fpcbazaar.api.files.FileStorage storage;
+  private final LoginOtpService otp;
 
   public UserAdminService(UserRepository users, RegistrationRepository registrations, MongoTemplate mongo,
-      PasswordEncoder encoder, AuditService audit, UserWrites writes, org.fpcbazaar.api.notifications.Notifications notifications) {
+      PasswordEncoder encoder, AuditService audit, UserWrites writes, org.fpcbazaar.api.notifications.Notifications notifications,
+      org.fpcbazaar.api.files.FileStorage storage, LoginOtpService otp) {
     this.users = users;
+    this.storage = storage;
+    this.otp = otp;
     this.notifications = notifications;
     this.writes = writes;
     this.registrations = registrations;
@@ -90,12 +95,12 @@ public class UserAdminService {
     String state = notBlank(req.state()) ? req.state().trim() : null;
     String recordId = null;
 
-    if (!USERNAME.matcher(username).matches())
-      throw invalid("username", "Use 3-120 letters, numbers or . _ @ + - (an email is fine).");
+    // Every login is an email: the sign-in code (second step) is sent there.
+    if (!USERNAME.matcher(username).matches() || !AccountService.EMAIL.matcher(username).matches())
+      throw invalid("username", "Enter the person's email address. The sign-in code is sent there.");
     if (name.isEmpty() || name.length() > 100) throw invalid("name", "Enter a name (maximum 100 characters).");
 
     if (role == Role.VENDOR || role == Role.FPO) {
-      if (!AccountService.EMAIL.matcher(username).matches()) throw invalid("username", "Vendor and FPO logins use their email.");
       Registration r = registrations.findById(notBlank(req.recordId()) ? req.recordId() : "-").orElse(null);
       if (r == null || AccountService.roleFor(r.getKind()) != role || r.getStatus() != Status.VERIFIED)
         throw invalid("recordId", "Choose a verified " + role.code() + " registration.");
@@ -166,12 +171,52 @@ public class UserAdminService {
     return saved;
   }
 
+  public record Deleted(String username, String role, boolean applicationDeleted, int filesDeleted) {}
+
+  /**
+   * Admin only. Permanently removes a login from the database. For a vendor / FPO login it also removes the
+   * linked application (registration) and its uploaded documents, so the public page disappears too.
+   * The activity log keeps a line saying who deleted what. Cannot be undone (only from a backup).
+   * Synchronized with {@link #update}: the "last admin" check cannot race with a switch-off.
+   */
+  public synchronized Deleted delete(CurrentUser actor, String id) {
+    if (actor.role() != Role.ADMIN) throw ApiException.forbidden("Only an admin can delete a login.");
+    User u = users.findById(id).orElseThrow(() -> ApiException.notFound("Login not found."));
+    if (u.getId().equals(actor.id())) throw ApiException.badRequest("You cannot delete your own login.");
+    if (u.getRole() == Role.ADMIN && u.isActive() && users.countByRoleAndActiveTrue(Role.ADMIN) <= 1)
+      throw ApiException.badRequest("At least one admin login must stay active.");
+
+    // 1. The login: from now on its tokens fail (AccountCheckFilter finds no user) and pending sign-ins are void.
+    if (mongo.remove(Query.query(Criteria.where("_id").is(u.getId())), User.class).getDeletedCount() != 1)
+      throw ApiException.notFound("Login not found.");
+    otp.cancelFor(u.getId());
+
+    // 2. Vendor / FPO: the application and its documents.
+    boolean applicationDeleted = false;
+    int files = 0;
+    String what = "";
+    if (u.getRecordId() != null) {
+      Registration r = registrations.findById(u.getRecordId()).orElse(null);
+      if (r != null) {
+        registrations.deleteById(r.getId());
+        applicationDeleted = true;
+        for (org.fpcbazaar.api.files.StoredFile f : r.getFiles().values()) {
+          storage.deleteQuietly(f);
+          files++;
+        }
+        what = " with application " + r.getId() + " (" + r.getKind() + ", " + r.getName() + ") and " + files + " document(s)";
+      }
+    }
+    audit.log(actor, "user_deleted", "user", u.getId(), u.getRole().code() + " " + u.getUsername() + what);
+    return new Deleted(u.getUsername(), u.getRole().code(), applicationDeleted, files);
+  }
+
   public Issued resetPassword(CurrentUser actor, String id) {
     User u = manageable(actor, id);
     if (u.getId().equals(actor.id())) throw ApiException.badRequest("Use 'change password' for your own login.");
     String temp = Passwords.temporary();
     User saved = writes.apply(u.getId(), new Update().set("passwordHash", encoder.encode(temp))
-        .set("mustChangePassword", true).inc("tokenVersion", 1));
+        .set("mustChangePassword", true).set("emailUnconfirmed", false).inc("tokenVersion", 1));
     if (saved == null) throw ApiException.notFound("Login not found.");
     audit.log(actor, "password_reset", "user", saved.getId(), saved.getUsername());
     notifications.account(saved, temp, true);

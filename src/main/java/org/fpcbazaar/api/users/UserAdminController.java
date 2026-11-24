@@ -5,6 +5,7 @@ import java.util.Map;
 import org.fpcbazaar.api.security.Auth;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,7 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Admin panel "Users": create State Head / Project Head / vendor / FPO logins, switch them off, reset passwords. */
+/** Admin panel "Users": create State Head / Project Head / vendor / FPO logins, switch them off, reset passwords, delete (admin). */
 @RestController
 @RequestMapping("/api/admin/users")
 public class UserAdminController {
@@ -36,6 +37,12 @@ public class UserAdminController {
   @PatchMapping("/{id}")
   public UserView update(@PathVariable String id, @RequestBody UserAdminService.UpdateRequest body) {
     return UserView.of(service.update(Auth.current(), id, body));
+  }
+
+  /** Permanent. Vendor / FPO: also their application and documents. */
+  @DeleteMapping("/{id}")
+  public UserAdminService.Deleted delete(@PathVariable String id) {
+    return service.delete(Auth.current(), id);
   }
 
   @PostMapping("/{id}/reset-password")

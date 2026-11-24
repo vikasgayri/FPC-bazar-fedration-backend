@@ -26,6 +26,10 @@ The backend binds to loopback by default. Do not use demo seeding on a shared/li
 
 ## Email configuration and diagnosis
 
+Sign-in needs email: after the password, a 6-digit code is emailed (`login_code` in Email status, sent at once).
+If email is off (`MAIL_ENABLED=false`) or in sandbox, codes never arrive and nobody can sign in. For a local run without
+real email set `LOGIN_OTP=false` (never on the live server).
+
 Set `MAIL_ENABLED=true`, `BREVO_API_KEY`, `MAIL_FROM`, `MAIL_FROM_NAME`, `MAIL_ENCRYPTION_KEY`,
 `PUBLIC_BASE_URL` and `FRONTEND_URL`. Generate the encryption key with `openssl rand -base64 32`.
 The API key is used with the Brevo HTTPS API (it is not an SMTP password).
@@ -104,6 +108,13 @@ For Atlas credentials, put `uri: "mongodb+srv://..."` in a mode-0600 temporary Y
 credentials do not appear in process arguments. Adapt the source namespace to the backed-up database. Restore uploads into a new
 empty directory, compare checksums and database counts, and only then switch the application's URI/storage to the restored copies.
 Do not use `--drop` against the live database as a routine restore check.
+
+## Locked out of the admin panel
+
+Sign-in needs the code emailed to the admin. If that email is lost, put the new email and a password
+(10+ characters, letters and numbers) in `ADMIN_USERNAME` / `ADMIN_PASSWORD`, set `ADMIN_RECOVER=true` and restart once.
+That login becomes an active admin (created, or its password reset; its old sessions end) and the activity log
+records `admin_recovered`. Then set `ADMIN_RECOVER=false`, sign in, and delete the old admin in Users.
 
 ## Deployment later
 

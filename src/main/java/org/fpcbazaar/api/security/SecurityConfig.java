@@ -42,9 +42,12 @@ public class SecurityConfig {
         .headers((h) -> h.contentTypeOptions((o) -> {}).frameOptions((f) -> f.deny()))
         .authorizeHttpRequests((a) -> a
             .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-            .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
+            .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/forgot-password", "/api/auth/reset-password",
+                "/api/auth/confirm-email", "/api/auth/resend-confirmation", "/api/auth/verify-otp", "/api/auth/resend-otp",
+                "/api/public/track").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/forms/*").permitAll()
-            .requestMatchers(HttpMethod.GET, "/reset-password", "/reset-password.js", "/reset-password.css").permitAll()
+            .requestMatchers(HttpMethod.GET, "/reset-password", "/reset-password.js", "/reset-password.css",
+                "/confirm-email", "/confirm-email.js").permitAll()
             .requestMatchers(HttpMethod.GET, "/api/public/**").permitAll()
             .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
             .requestMatchers("/api/auth/me", "/api/auth/change-password", "/api/admin/**").authenticated()

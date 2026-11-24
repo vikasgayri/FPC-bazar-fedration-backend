@@ -36,7 +36,9 @@ Then in the frontend `.env`: `VITE_API_URL=http://localhost:8081` and restart `n
 ## API
 | Method | Path | Who | Notes |
 |---|---|---|---|
-| POST | `/api/auth/login` | anyone | `{username, password}` → `{token, role, name, state?, recordId?}` |
+| POST | `/api/auth/login` | anyone | `{username, password}` → `{otpRequired, challenge, email (masked), expiresInSeconds, resendInSeconds}`; a 6-digit code is emailed. With `LOGIN_OTP=false` (local testing only) → `{token, role, name, state?, recordId?}` |
+| POST | `/api/auth/verify-otp` | anyone | `{challenge, code}` → `{token, role, name, state?, recordId?}`; code works once, 10 minutes, 5 tries |
+| POST | `/api/auth/resend-otp` | anyone | `{challenge}` → new code (after 60 s, up to 3 more); the old code stops working |
 | POST | `/api/auth/forgot-password` | anyone | `{username}`; generic response, email link if eligible |
 | POST | `/api/auth/reset-password` | anyone | `{token, newPassword}`; single-use, expires in 15 minutes |
 | GET | `/reset-password` | anyone | built-in reset form; token comes from email URL fragment |
@@ -54,11 +56,16 @@ Then in the frontend `.env`: `VITE_API_URL=http://localhost:8081` and restart `n
 | GET | `/api/public/vendors/{slug}/logo` | anyone | logo image of a verified vendor |
 | GET | `/api/public/fpos` | anyone | verified FPOs: name, state, district, kisan count, ODOP |
 | GET | `/api/public/stats` | anyone | verified FPOs / vendors per state (17 States Map) |
+| POST | `/api/public/track` | anyone | `{reference, phone}` → status (+ reason if rejected); both must match; 20 wrong tries / 15 min per IP (correct look-ups do not count) |
+| POST | `/api/auth/confirm-email` | anyone | `{token}` from the emailed link; switches a self-registered login on |
+| POST | `/api/auth/resend-confirmation` | anyone | `{username}`; same answer whether or not the login exists |
+| GET | `/confirm-email` | anyone | page opened from the confirmation email (served by the backend) |
 | POST | `/api/auth/change-password` | signed in | `{currentPassword, newPassword}` → fresh session; old tokens stop working |
 | GET | `/api/admin/users?role=&state=&q=` | admin, state_head | state_head sees the Project Heads of their state |
 | POST | `/api/admin/users` | admin, state_head | `{username, name, role, state?, recordId?}` → `{user, tempPassword}` (shown once) |
 | PATCH | `/api/admin/users/{id}` | admin, state_head | `{name?, state?, active?}` |
 | POST | `/api/admin/users/{id}/reset-password` | admin, state_head | new one-time password |
+| DELETE | `/api/admin/users/{id}` | admin | permanent; vendor / FPO: also their application and documents → `{username, role, applicationDeleted, filesDeleted}` |
 | GET | `/api/admin/enquiries?formKey=&status=&q=&from=&to=` | admin | inbox; dates as `2026-11-19` |
 | PATCH | `/api/admin/enquiries/{id}` | admin | `{status: new\|replied\|closed, note}` |
 | GET | `/api/admin/export/registrations?kind=&status=&state=&q=` | admin, state_head, project_head | `.xlsx`, own state only for heads |
@@ -93,5 +100,15 @@ Every error looks like `{ "ok": false, "message": "...", "errors": { "field": ".
 - New logins and password resets get a one-time password; until it is changed, that login can only call
   `/api/auth/me` and `/api/auth/change-password` (others answer 403 with `code: password_change_required`).
 - Switching a login off, resetting or changing its password, or moving it to another state ends its old sessions at once.
+- Every sign-in needs the password and then a 6-digit code emailed to the login's address (stored only as a hash;
+  10 minutes, 5 tries, one pending sign-in per login). So every login must be an email address and email must be working;
+  `LOGIN_OTP=false` turns the code off for local testing only.
+- Only an admin can delete a login. It is removed from the database; a vendor / FPO login also takes its application,
+  uploaded documents and public page with it. An admin cannot delete their own login. The activity log keeps a line.
 - The last active admin cannot be switched off. Passwords: at least 10 characters with letters and numbers.
 - Excel cells are always written as text, never as formulas.
+- Self-registration (FPO and vendor forms only): the form may carry `password` (+ `passwordConfirm`). The login
+  (username = the form's email) is created at once, cannot sign in until the emailed link is used (48 h, one use),
+  sees only its own record, and stays Pending until verified. The password is never stored with the form. With
+  `MAIL_ENABLED=false` the password is ignored and the login is created on verification as before. A password reset
+  (forgot-password link or admin reset) also confirms the email.

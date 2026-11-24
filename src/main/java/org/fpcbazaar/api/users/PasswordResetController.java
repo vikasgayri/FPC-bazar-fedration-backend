@@ -99,7 +99,7 @@ public class PasswordResetController {
     q = Query.query(Criteria.where("_id").is(u.getId()).and("resetTokenHash").is(hash(body.token()))
         .and("resetExpiresAt").gt(Instant.now(clock)).and("active").is(true)
         .and("tokenVersion").is(u.getTokenVersion()).and("resetTokenVersion").is(u.getTokenVersion()));
-    User saved = mongo.findAndModify(q, new Update().set("passwordHash", encoded).set("mustChangePassword", false)
+    User saved = mongo.findAndModify(q, new Update().set("passwordHash", encoded).set("mustChangePassword", false).set("emailUnconfirmed", false)
         .inc("tokenVersion", 1).unset("resetTokenHash").unset("resetExpiresAt").unset("resetTokenVersion"),
         FindAndModifyOptions.options().returnNew(true), User.class);
     if (saved == null) throw invalidToken();

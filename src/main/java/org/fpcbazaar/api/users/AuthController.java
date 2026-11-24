@@ -41,10 +41,15 @@ public class AuthController {
   private final AuditService audit;
   private final Clock clock;
   private final UserWrites writes;
+  private final LoginOtpService otp;
+  /** Per IP: code checks and "send again" (the code itself is also limited per sign-in). */
+  private final SlidingWindowLimiter otpIp;
 
   public AuthController(UserRepository users, PasswordEncoder encoder, JwtService jwt, AppProperties props, Clock clock,
-      AuditService audit, UserWrites writes) {
+      AuditService audit, UserWrites writes, LoginOtpService otp) {
     this.users = users;
+    this.otp = otp;
+    this.otpIp = new SlidingWindowLimiter(40, props.rateLimit().loginWindow(), clock);
     this.writes = writes;
     this.audit = audit;
     this.clock = clock;
@@ -72,8 +77,34 @@ public class AuthController {
     if (!ok) throw new ApiException(HttpStatus.UNAUTHORIZED, "Wrong username or password.");
     userFailures.reset(userKey);
     ipFailures.release(ipKey);
+    // Self-registered logins open only after the emailed link is used (the password was right, so saying so leaks nothing).
+    if (u.isEmailUnconfirmed())
+      throw new ApiException(HttpStatus.FORBIDDEN, "Please confirm your email first. Open the link we emailed to you, or ask for a new link.",
+          Map.of("email", "email_unconfirmed"));
+    // Second step: the token is given only after the code emailed to the user is entered (POST /verify-otp).
+    if (otp.enabled()) return otp.start(u);
+    return signedIn(u, "password");
+  }
+
+  public record OtpRequest(@NotBlank @Size(max = 100) String challenge, @Size(max = 20) String code) {}
+
+  /** Second sign-in step: the 6-digit code from the email. Returns the same session as a password-only login. */
+  @PostMapping("/verify-otp")
+  public Map<String, Object> verifyOtp(@Valid @RequestBody OtpRequest body, HttpServletRequest req) {
+    if (!otpIp.tryAcquire("ip:" + ClientIp.of(req))) throw tooMany();
+    return signedIn(otp.verify(body.challenge(), body.code()), "password + email code");
+  }
+
+  /** Emails a new code for the same sign-in (after a short wait). */
+  @PostMapping("/resend-otp")
+  public Map<String, Object> resendOtp(@Valid @RequestBody OtpRequest body, HttpServletRequest req) {
+    if (!otpIp.tryAcquire("ip:" + ClientIp.of(req))) throw tooMany();
+    return otp.resend(body.challenge());
+  }
+
+  private Map<String, Object> signedIn(User u, String how) {
     writes.touchLogin(u.getId(), Instant.now(clock)); // only lastLoginAt; never overwrites a switch-off made meanwhile
-    audit.log(u.getId(), u.getName(), u.getRole().code(), "login", "user", u.getId(), u.getUsername());
+    audit.log(u.getId(), u.getName(), u.getRole().code(), "login", "user", u.getId(), u.getUsername() + " (" + how + ")");
     return session(u);
   }
 

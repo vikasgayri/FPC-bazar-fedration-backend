@@ -45,12 +45,20 @@ app:
     username: ${ADMIN_USERNAME:}
     password: ${ADMIN_PASSWORD:}
     name: ${ADMIN_NAME:Federation Admin}
+    recover: ${ADMIN_RECOVER:false}
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
   seed-demo: ${SEED_DEMO:false}
   rate-limit:
     forms-per-minute: 10
     login-failures-per-window: 5
     login-window: 15m
+
+  # Email code after the password on every sign-in. LOGIN_OTP=false only for local testing without email.
+  login-otp:
+    enabled: ${LOGIN_OTP:true}
+    ttl: 10m
+    max-attempts: 5
+    resend-after: 60s
 
   mail:
     enabled: ${MAIL_ENABLED:false}
